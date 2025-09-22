@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Request, Form, HTTPException, Depends, Cookie, Header
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from pydantic import BaseModel
 import hashlib
 import secrets
 import time
@@ -14,6 +15,7 @@ import json
 from datetime import datetime
 import uuid
 import logging
+import shutil
 from pathlib import Path
 from firebase_config import initialize_firebase, get_firestore_client, verify_firebase_token, LOGS_COLLECTION
 
@@ -352,7 +354,6 @@ async def clear_logs(request: Request):
         # Backup current logs before clearing
         backup_file = LOGS_DIR / f"login_attempts_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         if LOGIN_LOG_FILE.exists():
-            import shutil
             shutil.copy2(LOGIN_LOG_FILE, backup_file)
         
         # Clear the log file
@@ -370,7 +371,6 @@ async def download_logs(request: Request):
         raise HTTPException(status_code=403, detail="Admin access required")
     
     try:
-        from fastapi.responses import FileResponse
         if LOGIN_LOG_FILE.exists():
             return FileResponse(
                 path=str(LOGIN_LOG_FILE),
@@ -469,7 +469,6 @@ async def get_current_user_optional(authorization: Optional[str] = Header(None))
         return None
 
 # Firebase CRUD Operations Examples
-from pydantic import BaseModel
 
 class UserData(BaseModel):
     """User data model for Firebase operations"""
@@ -701,11 +700,12 @@ async def verify_token_endpoint(current_user: dict = Depends(get_current_user)):
         }
     }
 
-# Export the app for Vercel
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring"""
     return {"status": "healthy", "environment": "vercel" if os.getenv("VERCEL") == "1" else "local"}
 
-# For Vercel, we need to handle the ASGI application properly
-handler = app
+# For Vercel: This is the standard way to export a FastAPI app
+# Vercel looks for a variable named 'app' at module level
+# No need for complex handler functions
