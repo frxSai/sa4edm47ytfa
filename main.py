@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Form, HTTPException, Depends, Cookie
+from fastapi import FastAPI, Request, Form, HTTPException, Depends, Cookie, Header
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -15,9 +15,20 @@ from datetime import datetime
 import uuid
 import logging
 from pathlib import Path
+from firebase_config import initialize_firebase, get_firestore_client, verify_firebase_token, LOGS_COLLECTION
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize Firebase
+try:
+    initialize_firebase()
+    FIREBASE_ENABLED = True
+    print("✅ Firebase initialized successfully")
+except Exception as e:
+    FIREBASE_ENABLED = False
+    print(f"⚠️  Firebase initialization failed: {e}")
+    print("📝 Falling back to in-memory logging")
 
 app = FastAPI()
 
@@ -33,26 +44,40 @@ rate_limit_storage = {}
 # Admin key for accessing logs (loaded from environment)
 ADMIN_KEY = os.getenv("ADMIN_KEY", "fallback_secret")  # Load from .env file with fallback
 
-# Setup logging directory and file
-LOGS_DIR = Path("logs")
-LOGS_DIR.mkdir(exist_ok=True)
-LOGIN_LOG_FILE = LOGS_DIR / "login_attempts.log"
+# Check if running on Vercel (serverless environment)
+IS_VERCEL = os.getenv("VERCEL") == "1"
+
+# In-memory log storage for serverless environments
+in_memory_logs = []
+
+# Setup logging directory and file (only for non-Vercel environments)
+if not IS_VERCEL:
+    LOGS_DIR = Path("logs")
+    LOGS_DIR.mkdir(exist_ok=True)
+    LOGIN_LOG_FILE = LOGS_DIR / "login_attempts.log"
+else:
+    LOGIN_LOG_FILE = None
 
 # Configure logging for login attempts
 login_logger = logging.getLogger("login_attempts")
 login_logger.setLevel(logging.INFO)
 
-# Create file handler
-log_handler = logging.FileHandler(LOGIN_LOG_FILE, encoding='utf-8')
-log_handler.setLevel(logging.INFO)
-
-# Create formatter
-log_formatter = logging.Formatter('%(message)s')
-log_handler.setFormatter(log_formatter)
-
-# Add handler to logger
-if not login_logger.handlers:
-    login_logger.addHandler(log_handler)
+# Create appropriate handler based on environment
+if not IS_VERCEL and LOGIN_LOG_FILE:
+    # File handler for local/traditional hosting
+    log_handler = logging.FileHandler(LOGIN_LOG_FILE, encoding='utf-8')
+    log_handler.setLevel(logging.INFO)
+    
+    # Create formatter
+    log_formatter = logging.Formatter('%(message)s')
+    log_handler.setFormatter(log_formatter)
+    
+    # Add handler to logger
+    if not login_logger.handlers:
+        login_logger.addHandler(log_handler)
+else:
+    # For Vercel, we'll handle logging in memory (no file handler needed)
+    pass
 
 # Add session middleware for security
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
@@ -110,7 +135,7 @@ def get_user_agent(request: Request) -> str:
     return request.headers.get("User-Agent", "Unknown")
 
 def log_login_attempt(request: Request, secret_key: str, success: bool):
-    """Log login attempt with IP, device info, and timestamp to file"""
+    """Log login attempt with IP, device info, and timestamp to Firebase or memory"""
     client_ip = get_client_ip(request)
     user_agent = get_user_agent(request)
     timestamp = datetime.now().isoformat()
@@ -125,30 +150,50 @@ def log_login_attempt(request: Request, secret_key: str, success: bool):
         "is_admin": secret_key == ADMIN_KEY
     }
     
-    # Log to file as JSON
     try:
-        login_logger.info(json.dumps(log_entry))
+        if FIREBASE_ENABLED:
+            # Store in Firebase Firestore
+            db = get_firestore_client()
+            db.collection(LOGS_COLLECTION).document(log_entry["id"]).set(log_entry)
+        else:
+            # Fallback: Store in memory
+            in_memory_logs.append(log_entry)
+            # Keep only the last 1000 entries to prevent memory bloat
+            if len(in_memory_logs) > 1000:
+                in_memory_logs.pop(0)
     except Exception as e:
         print(f"Error logging attempt: {e}")
+        # Fallback to memory storage if Firebase fails
+        in_memory_logs.append(log_entry)
+        if len(in_memory_logs) > 1000:
+            in_memory_logs.pop(0)
 
 def read_login_logs(limit: int = 1000) -> List[Dict]:
-    """Read login logs from file"""
+    """Read login logs from Firebase or memory depending on availability"""
     logs = []
     try:
-        if LOGIN_LOG_FILE.exists():
-            with open(LOGIN_LOG_FILE, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                # Get the last 'limit' lines
-                recent_lines = lines[-limit:] if len(lines) > limit else lines
-                
-                for line in recent_lines:
-                    try:
-                        log_entry = json.loads(line.strip())
-                        logs.append(log_entry)
-                    except json.JSONDecodeError:
-                        continue
+        if FIREBASE_ENABLED:
+            # Read from Firebase Firestore
+            db = get_firestore_client()
+            logs_ref = db.collection(LOGS_COLLECTION)
+            # Order by timestamp descending and limit results
+            query = logs_ref.order_by("timestamp", direction="DESCENDING").limit(limit)
+            docs = query.stream()
+            
+            for doc in docs:
+                log_data = doc.to_dict()
+                logs.append(log_data)
+            
+            # Reverse to show oldest first (like file logs)
+            logs.reverse()
+        else:
+            # Fallback: Return from memory
+            logs = in_memory_logs[-limit:] if len(in_memory_logs) > limit else in_memory_logs
+            
     except Exception as e:
-        print(f"Error reading logs: {e}")
+        print(f"Error reading logs from Firebase: {e}")
+        # Fallback to memory storage
+        logs = in_memory_logs[-limit:] if len(in_memory_logs) > limit else in_memory_logs
     
     return logs
 
@@ -371,6 +416,292 @@ async def add_security_headers(request: Request, call_next):
 # such as Redis, PostgreSQL, or MongoDB for persistence across function invocations
 
 # Add a simple health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "firebase_enabled": FIREBASE_ENABLED,
+        "timestamp": datetime.now().isoformat()
+    }
+
+# Firebase Authentication Dependencies
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """Extract and verify Firebase ID token from Authorization header"""
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header missing",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization header format. Use 'Bearer <token>'",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = authorization[7:]  # Remove "Bearer " prefix
+    
+    try:
+        # Verify the Firebase ID token
+        decoded_token = verify_firebase_token(token)
+        return decoded_token
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+async def get_current_user_optional(authorization: Optional[str] = Header(None)):
+    """Optional authentication - returns user if token is valid, None otherwise"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    
+    token = authorization[7:]
+    
+    try:
+        decoded_token = verify_firebase_token(token)
+        return decoded_token
+    except:
+        return None
+
+# Firebase CRUD Operations Examples
+from pydantic import BaseModel
+
+class UserData(BaseModel):
+    """User data model for Firebase operations"""
+    name: str
+    email: str
+    age: Optional[int] = None
+    
+class UpdateUserData(BaseModel):
+    """User data model for updates (all fields optional)"""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    age: Optional[int] = None
+
+@app.post("/api/users")
+async def create_user(user: UserData):
+    """Create a new user in Firestore"""
+    if not FIREBASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    
+    try:
+        db = get_firestore_client()
+        user_id = str(uuid.uuid4())
+        user_doc = {
+            "id": user_id,
+            "name": user.name,
+            "email": user.email,
+            "age": user.age,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+        
+        # Add document to Firestore
+        db.collection("users").document(user_id).set(user_doc)
+        
+        return {"message": "User created successfully", "user_id": user_id, "user": user_doc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
+
+@app.get("/api/users/{user_id}")
+async def get_user(user_id: str):
+    """Get a user by ID from Firestore"""
+    if not FIREBASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    
+    try:
+        db = get_firestore_client()
+        doc_ref = db.collection("users").document(user_id)
+        doc = doc_ref.get()
+        
+        if doc.exists:
+            return {"user": doc.to_dict()}
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting user: {str(e)}")
+
+@app.get("/api/users")
+async def list_users(limit: int = 10):
+    """List all users from Firestore"""
+    if not FIREBASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    
+    try:
+        db = get_firestore_client()
+        users_ref = db.collection("users")
+        query = users_ref.limit(limit)
+        docs = query.stream()
+        
+        users = []
+        for doc in docs:
+            users.append(doc.to_dict())
+        
+        return {"users": users, "count": len(users)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing users: {str(e)}")
+
+@app.put("/api/users/{user_id}")
+async def update_user(user_id: str, user_data: UpdateUserData):
+    """Update a user in Firestore"""
+    if not FIREBASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    
+    try:
+        db = get_firestore_client()
+        doc_ref = db.collection("users").document(user_id)
+        doc = doc_ref.get()
+        
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Build update data (only include non-None fields)
+        update_data = {"updated_at": datetime.now().isoformat()}
+        if user_data.name is not None:
+            update_data["name"] = user_data.name
+        if user_data.email is not None:
+            update_data["email"] = user_data.email
+        if user_data.age is not None:
+            update_data["age"] = user_data.age
+        
+        # Update document
+        doc_ref.update(update_data)
+        
+        # Get updated document
+        updated_doc = doc_ref.get()
+        return {"message": "User updated successfully", "user": updated_doc.to_dict()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating user: {str(e)}")
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: str):
+    """Delete a user from Firestore"""
+    if not FIREBASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    
+    try:
+        db = get_firestore_client()
+        doc_ref = db.collection("users").document(user_id)
+        doc = doc_ref.get()
+        
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Delete document
+        doc_ref.delete()
+        
+        return {"message": "User deleted successfully", "user_id": user_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+
+# Secured endpoints requiring Firebase authentication
+@app.get("/api/secure/profile")
+async def get_profile(current_user: dict = Depends(get_current_user)):
+    """Get current user's profile (requires Firebase authentication)"""
+    return {
+        "message": "This is a secure endpoint",
+        "user_id": current_user.get("uid"),
+        "email": current_user.get("email"),
+        "email_verified": current_user.get("email_verified"),
+        "token_claims": current_user
+    }
+
+@app.post("/api/secure/user-data")
+async def create_user_data(
+    user: UserData, 
+    current_user: dict = Depends(get_current_user)
+):
+    """Create user data (requires Firebase authentication)"""
+    if not FIREBASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Firebase not available")
+    
+    try:
+        db = get_firestore_client()
+        user_id = current_user.get("uid")
+        
+        user_doc = {
+            "id": user_id,
+            "firebase_uid": user_id,
+            "name": user.name,
+            "email": user.email,
+            "age": user.age,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "created_by": current_user.get("email", "unknown")
+        }
+        
+        # Add document to Firestore
+        db.collection("user_profiles").document(user_id).set(user_doc)
+        
+        return {"message": "User profile created successfully", "profile": user_doc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating user profile: {str(e)}")
+
+@app.get("/api/secure/admin/logs")
+async def get_admin_logs(
+    limit: int = 100,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get login logs (admin only - requires Firebase authentication)"""
+    # Check if user has admin role (you can customize this logic)
+    user_email = current_user.get("email", "")
+    if not user_email.endswith("@yourdomain.com"):  # Replace with your admin domain
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        logs = read_login_logs(limit)
+        stats = get_log_statistics()
+        
+        return {
+            "logs": logs,
+            "statistics": stats,
+            "requested_by": user_email
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving logs: {str(e)}")
+
+# Mixed authentication endpoint (optional auth)
+@app.get("/api/mixed/public-data")
+async def get_public_data(current_user: Optional[dict] = Depends(get_current_user_optional)):
+    """Get public data with optional authentication"""
+    base_data = {
+        "public_message": "This data is available to everyone",
+        "timestamp": datetime.now().isoformat(),
+        "firebase_enabled": FIREBASE_ENABLED
+    }
+    
+    if current_user:
+        base_data["authenticated_user"] = {
+            "uid": current_user.get("uid"),
+            "email": current_user.get("email"),
+            "additional_message": "You are authenticated and see extra data!"
+        }
+    else:
+        base_data["message"] = "You are viewing as a guest. Authenticate to see more data."
+    
+    return base_data
+
+# Firebase Auth example endpoints
+@app.post("/api/auth/verify-token")
+async def verify_token_endpoint(current_user: dict = Depends(get_current_user)):
+    """Verify a Firebase ID token"""
+    return {
+        "valid": True,
+        "user": {
+            "uid": current_user.get("uid"),
+            "email": current_user.get("email"),
+            "email_verified": current_user.get("email_verified"),
+            "auth_time": current_user.get("auth_time"),
+            "exp": current_user.get("exp")
+        }
+    }
+
+# Export the app for Vercel
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring"""
