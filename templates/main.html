@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 50%, #ffd3e1 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 60px 40px;
+            border-radius: 30px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(15px);
+            max-width: 500px;
+            width: 90%;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid rgba(255, 182, 193, 0.3);
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transform: rotate(45deg);
+            animation: shimmer 3s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: rotate(45deg) translateX(-100%); }
+            100% { transform: rotate(45deg) translateX(100%); }
+        }
+
+        .message {
+            font-size: 48px;
+            background: linear-gradient(45deg, #e91e63, #ff6b9d, #f06292);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+            font-weight: 300;
+            letter-spacing: 2px;
+            animation: fadeInUp 1s ease-out, textShimmer 3s infinite;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 2px 4px rgba(233, 30, 99, 0.2);
+        }
+
+        @keyframes textShimmer {
+            0%, 100% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        .heart {
+            font-size: 64px;
+            background: linear-gradient(45deg, #e91e63, #ff6b9d);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+            animation: heartbeat 2s infinite, heartGlow 3s infinite;
+            position: relative;
+            z-index: 1;
+            filter: drop-shadow(0 4px 8px rgba(233, 30, 99, 0.3));
+        }
+
+        @keyframes heartGlow {
+            0%, 100% {
+                filter: drop-shadow(0 4px 8px rgba(233, 30, 99, 0.3));
+            }
+            50% {
+                filter: drop-shadow(0 4px 15px rgba(233, 30, 99, 0.6));
+            }
+        }
+
+        @keyframes heartbeat {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .welcome-text {
+            font-size: 20px;
+            color: #666;
+            margin-bottom: 40px;
+            animation: fadeInUp 1s ease-out 0.3s both;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            line-height: 1.5;
+        }
+
+        .logout-btn {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            animation: fadeInUp 1s ease-out 0.6s both;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+            overflow: hidden;
+        }
+
+        .logout-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .logout-btn:hover::before {
+            left: 100%;
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+        }
+
+        .logout-btn:active {
+            transform: translateY(-1px);
+        }
+
+        .floating-hearts {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .floating-heart {
+            position: absolute;
+            color: rgba(233, 30, 99, 0.3);
+            font-size: 20px;
+            animation: float 6s infinite linear;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(100vh) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-100px) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* Cute Flower Animation Styles */
+        .flower-garden {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .flower {
+            position: absolute;
+            font-size: 24px;
+            animation: flowerFloat 8s infinite linear;
+        }
+
+        .flower:nth-child(odd) {
+            animation: flowerFloat 10s infinite linear;
+        }
+
+        .flower:nth-child(3n) {
+            animation: flowerSway 12s infinite linear;
+        }
+
+        @keyframes flowerFloat {
+            0% {
+                transform: translateY(100vh) translateX(0) rotate(0deg) scale(0.8);
+                opacity: 0;
+            }
+            5% {
+                opacity: 1;
+            }
+            25% {
+                transform: translateY(75vh) translateX(20px) rotate(90deg) scale(1);
+            }
+            50% {
+                transform: translateY(50vh) translateX(-10px) rotate(180deg) scale(1.1);
+            }
+            75% {
+                transform: translateY(25vh) translateX(15px) rotate(270deg) scale(1);
+            }
+            95% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-50px) translateX(0) rotate(360deg) scale(0.8);
+                opacity: 0;
+            }
+        }
+
+        @keyframes flowerSway {
+            0% {
+                transform: translateY(100vh) translateX(0) rotate(0deg);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            20% {
+                transform: translateY(80vh) translateX(-30px) rotate(45deg);
+            }
+            40% {
+                transform: translateY(60vh) translateX(30px) rotate(135deg);
+            }
+            60% {
+                transform: translateY(40vh) translateX(-20px) rotate(225deg);
+            }
+            80% {
+                transform: translateY(20vh) translateX(25px) rotate(315deg);
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(-50px) translateX(0) rotate(360deg);
+                opacity: 0;
+            }
+        }
+
+        /* Decorative corner flowers */
+        .corner-flower {
+            position: fixed;
+            font-size: 32px;
+            z-index: 2;
+            animation: cornerBloom 4s infinite ease-in-out;
+            pointer-events: none;
+        }
+
+        .corner-flower.top-left {
+            top: 20px;
+            left: 20px;
+            animation-delay: 0s;
+        }
+
+        .corner-flower.top-right {
+            top: 20px;
+            right: 20px;
+            animation-delay: 1s;
+        }
+
+        .corner-flower.bottom-left {
+            bottom: 20px;
+            left: 20px;
+            animation-delay: 2s;
+        }
+
+        .corner-flower.bottom-right {
+            bottom: 20px;
+            right: 20px;
+            animation-delay: 3s;
+        }
+
+        @keyframes cornerBloom {
+            0%, 100% {
+                transform: scale(1) rotate(0deg);
+                opacity: 0.7;
+            }
+            50% {
+                transform: scale(1.2) rotate(180deg);
+                opacity: 1;
+            }
+        }
+
+        /* Enhanced heart animation */
+        .heart {
+            font-size: 64px;
+            background: linear-gradient(45deg, #e91e63, #ff6b9d);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+            animation: heartbeat 2s infinite, heartGlow 3s infinite;
+            position: relative;
+            z-index: 1;
+            filter: drop-shadow(0 4px 8px rgba(233, 30, 99, 0.3));
+        }
+
+        @keyframes heartGlow {
+            0%, 100% {
+                filter: drop-shadow(0 4px 8px rgba(233, 30, 99, 0.3));
+            }
+            50% {
+                filter: drop-shadow(0 4px 15px rgba(233, 30, 99, 0.6));
+            }
+        }
+
+        .session-info-bottom {
+            background: rgba(255, 255, 255, 0.9);
+            padding: 12px 18px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #666;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 182, 193, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            animation: fadeInUp 1s ease-out 1.2s both;
+            margin-top: 20px;
+            display: inline-block;
+        }
+
+        .miss-you-message {
+            font-size: 16px;
+            color: #e91e63;
+            margin-bottom: 20px;
+            animation: fadeInUp 1s ease-out 0.9s both;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 1px 2px rgba(233, 30, 99, 0.2);
+            line-height: 1.5;
+            font-style: italic;
+            font-weight: 500;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .message {
+                font-size: 36px;
+            }
+            
+            .heart {
+                font-size: 48px;
+            }
+            
+            .welcome-text {
+                font-size: 18px;
+            }
+            
+            .container {
+                padding: 40px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="floating-hearts" id="floatingHearts"></div>
+    <div class="flower-garden" id="flowerGarden"></div>
+    
+    <!-- Corner decorative flowers -->
+    <div class="corner-flower top-left">🌸</div>
+    <div class="corner-flower top-right">🌺</div>
+    <div class="corner-flower bottom-left">🌼</div>
+    <div class="corner-flower bottom-right">🌻</div>
+    
+    <div class="container">
+        <div class="heart">💖</div>
+        <h1 class="message">I miss you</h1>
+        <p class="miss-you-message">I will always carry you in my heart and eagerly await the moment we can share our thoughts and dreams together again. Until then, know that every day apart only strengthens my longing to hear your voice and see your smile. by mumu.</p>
+        <p class="welcome-text">You've successfully accessed my mind area, where every thought is filled by mumu and me, naka :)</p>
+        <a href="/logout" class="logout-btn">🌸 OKIE 🌸</a>
+    </div>
+
+    <script>
+        // Create floating hearts animation
+        function createFloatingHeart() {
+            const heart = document.createElement('div');
+            heart.className = 'floating-heart';
+            heart.innerHTML = '💕';
+            heart.style.left = Math.random() * 100 + '%';
+            heart.style.animationDuration = (Math.random() * 3 + 3) + 's';
+            heart.style.animationDelay = Math.random() * 2 + 's';
+            
+            document.getElementById('floatingHearts').appendChild(heart);
+            
+            // Remove heart after animation
+            setTimeout(() => {
+                if (heart.parentNode) {
+                    heart.parentNode.removeChild(heart);
+                }
+            }, 8000);
+        }
+
+        // Create floating flowers animation
+        function createFloatingFlower() {
+            const flowers = ['🌸', '🌺', '🌼', '🌻', '🌷', '🏵️', '💐', '🌹'];
+            const flower = document.createElement('div');
+            flower.className = 'flower';
+            flower.innerHTML = flowers[Math.floor(Math.random() * flowers.length)];
+            flower.style.left = Math.random() * 100 + '%';
+            flower.style.animationDuration = (Math.random() * 4 + 6) + 's';
+            flower.style.animationDelay = Math.random() * 3 + 's';
+            
+            // Random size variation
+            const size = 0.8 + Math.random() * 0.6; // 0.8 to 1.4
+            flower.style.fontSize = (24 * size) + 'px';
+            
+            document.getElementById('flowerGarden').appendChild(flower);
+            
+            // Remove flower after animation
+            setTimeout(() => {
+                if (flower.parentNode) {
+                    flower.parentNode.removeChild(flower);
+                }
+            }, 12000);
+        }
+
+        // Create sparkling effects
+        function createSparkle() {
+            const sparkle = document.createElement('div');
+            sparkle.innerHTML = '✨';
+            sparkle.style.position = 'fixed';
+            sparkle.style.left = Math.random() * 100 + '%';
+            sparkle.style.top = Math.random() * 100 + '%';
+            sparkle.style.fontSize = (10 + Math.random() * 10) + 'px';
+            sparkle.style.color = `hsl(${Math.random() * 60 + 300}, 70%, 80%)`;
+            sparkle.style.pointerEvents = 'none';
+            sparkle.style.zIndex = '3';
+            sparkle.style.animation = 'sparkleShine 2s ease-out forwards';
+            
+            document.body.appendChild(sparkle);
+            
+            setTimeout(() => {
+                if (sparkle.parentNode) {
+                    sparkle.parentNode.removeChild(sparkle);
+                }
+            }, 2000);
+        }
+
+        // Add sparkle animation to CSS
+        const sparkleCSS = `
+            @keyframes sparkleShine {
+                0% {
+                    opacity: 0;
+                    transform: scale(0) rotate(0deg);
+                }
+                50% {
+                    opacity: 1;
+                    transform: scale(1) rotate(180deg);
+                }
+                100% {
+                    opacity: 0;
+                    transform: scale(0) rotate(360deg);
+                }
+            }
+        `;
+        const style = document.createElement('style');
+        style.textContent = sparkleCSS;
+        document.head.appendChild(style);
+
+        // Create hearts periodically
+        setInterval(createFloatingHeart, 1500);
+
+        // Create flowers periodically
+        setInterval(createFloatingFlower, 2000);
+
+        // Create sparkles periodically
+        setInterval(createSparkle, 3000);
+
+        // Initial animations
+        for (let i = 0; i < 3; i++) {
+            setTimeout(createFloatingHeart, i * 300);
+            setTimeout(createFloatingFlower, i * 500);
+        }
+
+        // Initial sparkles
+        for (let i = 0; i < 5; i++) {
+            setTimeout(createSparkle, i * 600);
+        }
+
+        // Add some security measures
+        document.addEventListener('keydown', function(e) {
+            // Disable F12, Ctrl+Shift+I, Ctrl+U
+            if (e.key === 'F12' || 
+                (e.ctrlKey && e.shiftKey && e.key === 'I') ||
+                (e.ctrlKey && e.key === 'u')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Disable right-click
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            return false;
+        });
+
+        // Session timeout warning (25 minutes)
+        setTimeout(() => {
+            if (confirm('Your session will expire in 5 minutes. Do you want to continue?')) {
+                // Refresh the page to extend session
+                window.location.reload();
+            } else {
+                window.location.href = '/logout';
+            }
+        }, 25 * 60 * 1000);
+    </script>
+</body>
+</html>
